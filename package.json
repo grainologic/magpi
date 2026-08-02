@@ -18,14 +18,16 @@
   ],
   "license": "MIT",
   "type": "module",
-  "pi": {
-    "extensions": [
-      "./src/index.ts"
-    ]
+  "author": "Grainologic",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grainologic/magpi.git"
   },
-  "scripts": {
-    "test": "tsx --test test/*.selfcheck.ts"
-  },
+  "homepage": "https://github.com/grainologic/magpi",
+  "files": [
+    "src",
+    "resources"
+  ],
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "linkedom": "^0.18.13",
@@ -43,13 +45,13 @@
     "@types/turndown": "^5.0.5",
     "tsx": "^4.23.1"
   },
-  "author": "Grainologic",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/grainologic/magpi.git"
-  },
-  "homepage": "https://github.com/grainologic/magpi",
   "engines": {
     "node": ">=22.19.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "image": "https://raw.githubusercontent.com/grainologic/magpi/main/resources/blurb.png"
   }
 }
