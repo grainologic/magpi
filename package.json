@@ -1,0 +1,55 @@
+{
+  "name": "magpi",
+  "version": "1.0.0",
+  "description": "Token-frugal web fetch & search for pi. Smart handlers (GitHub, GitLab, package registries, Wikipedia, Stack Exchange, Reddit, HN, arXiv, PDFs, llms.txt), timestamped disk cache, extensible handler system. No API keys.",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "pi-extension",
+    "web-fetch",
+    "web-search",
+    "fetch",
+    "search",
+    "cache",
+    "scraping",
+    "readability",
+    "markdown"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "tsx --test test/*.selfcheck.ts"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.13",
+    "turndown": "^7.2.4",
+    "unpdf": "^1.8.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/turndown": "^5.0.5",
+    "tsx": "^4.23.1"
+  },
+  "author": "Grainologic",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grainologic/magpi.git"
+  },
+  "homepage": "https://github.com/grainologic/magpi",
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}
