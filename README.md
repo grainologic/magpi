@@ -18,7 +18,7 @@ pi install npm:pi-magpi        # global
 pi install -l npm:pi-magpi     # project-local
 ```
 
-Or try it without installing: `pi -e npm:magpi`
+Or try it without installing: `pi -e npm:pi-magpi`
 
 > The tools are namespaced (`magpi_fetch`, `magpi_search`) so they coexist with other web-access extensions. Already running one? Keep it: MagPi defers to real search tools automatically and sticks to what it's best at, fetching. See "MagPi and pi-web-access" below.
 
