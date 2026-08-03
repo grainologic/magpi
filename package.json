@@ -1,5 +1,5 @@
 {
-  "name": "magpi",
+  "name": "pi-magpi",
   "version": "1.0.0",
   "description": "Token-frugal web fetch & search for pi. Smart handlers (GitHub, GitLab, package registries, Wikipedia, Stack Exchange, Reddit, HN, arXiv, PDFs, llms.txt), timestamped disk cache, extensible handler system. No API keys.",
   "keywords": [
