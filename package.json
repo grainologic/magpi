@@ -51,7 +51,6 @@
   "pi": {
     "extensions": [
       "./src/index.ts"
-    ],
-    "image": "https://raw.githubusercontent.com/grainologic/magpi/main/resources/blurb.png"
+    ]
   }
 }
