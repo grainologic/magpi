@@ -14,8 +14,8 @@ MagPi's job is to kill the "I can't look that up" dead end, and cheaply. Everyth
 ## Install
 
 ```bash
-pi install npm:magpi        # global
-pi install -l npm:magpi     # project-local
+pi install npm:pi-magpi        # global
+pi install -l npm:pi-magpi     # project-local
 ```
 
 Or try it without installing: `pi -e npm:magpi`
