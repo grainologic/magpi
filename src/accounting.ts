@@ -23,9 +23,11 @@ export interface Counters {
   withheldChars: number;
   /** Preview text removed from messages already in the prompt. */
   elidedChars: number;
+  /** Elision passes run. Each one costs a prompt cache break, so it is the price. */
+  elisionPasses: number;
 }
 
-const zero = (): Counters => ({ fetches: 0, hits: 0, stale: 0, withheldChars: 0, elidedChars: 0 });
+const zero = (): Counters => ({ fetches: 0, hits: 0, stale: 0, withheldChars: 0, elidedChars: 0, elisionPasses: 0 });
 
 let counters = zero();
 
@@ -50,6 +52,11 @@ export function recordElided(chars: number): void {
   if (chars > 0) counters.elidedChars += chars;
 }
 
+/** One batch of previews rewritten, which is one prompt cache break. */
+export function recordElisionPass(): void {
+  counters.elisionPasses++;
+}
+
 export function snapshot(): Counters {
   return { ...counters };
 }
@@ -68,5 +75,7 @@ export function tokensSaved(c: Counters = counters): number {
 export function summary(c: Counters = counters): string {
   const cached = c.hits + c.stale;
   const staleNote = c.stale > 0 ? ` (${c.stale} stale)` : "";
-  return `this session: ${c.fetches} fetched, ${cached} from cache${staleNote} | ~${tokensSaved(c).toLocaleString("en-US")} tokens kept out of context`;
+  // Elision passes are the cost side: each one breaks the prompt cache.
+  const passNote = c.elisionPasses > 0 ? ` | ${c.elisionPasses} elision pass${c.elisionPasses === 1 ? "" : "es"}` : "";
+  return `this session: ${c.fetches} fetched, ${cached} from cache${staleNote} | ~${tokensSaved(c).toLocaleString("en-US")} tokens kept out of context${passNote}`;
 }
