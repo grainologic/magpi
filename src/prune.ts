@@ -1,3 +1,5 @@
+import { recordElided } from "./accounting.js";
+
 interface MessageLike {
   role: string;
   toolName?: string;
@@ -51,7 +53,13 @@ export function elideFetchPreviews<T extends MessageLike>(
     .filter((m) => !committed.has(m.details!.contentPath!))
     .reduce((n, m) => n + previewChars(m), 0);
   if (freshChars > threshold) {
-    for (const m of eligible) committed.add(m.details!.contentPath!);
+    // Count each preview once, on the pass that commits it. Committed paths are
+    // re-elided on every later call, and those repeats are not new savings.
+    for (const m of eligible) {
+      if (committed.has(m.details!.contentPath!)) continue;
+      committed.add(m.details!.contentPath!);
+      recordElided(previewChars(m));
+    }
   }
 
   for (const m of eligible) {

@@ -8,6 +8,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { readFileSync } from "node:fs";
+import * as accounting from "./accounting.js";
 import * as cache from "./cache.js";
 import * as cachedb from "./cachedb.js";
 import { elideFetchPreviews } from "./prune.js";
@@ -76,6 +77,7 @@ export default function (pi: ExtensionAPI) {
   };
 
   pi.on("session_start", (_event, ctx) => {
+    accounting.reset();
     const trusted = ctx.isProjectTrusted();
     for (const p of invalidConfigPaths(ctx.cwd, trusted)) {
       if (ctx.hasUI) ctx.ui.notify(`magpi: invalid JSON in ${p}; using defaults`, "error");
@@ -177,6 +179,7 @@ export default function (pi: ExtensionAPI) {
         stale = true;
       }
     }
+    accounting.recordFetch(fromCache, stale);
     return { entry, fromCache, stale };
   }
 
@@ -193,7 +196,10 @@ export default function (pi: ExtensionAPI) {
     const settled = await Promise.allSettled(
       targets.map(async (t) => {
         try {
-          return await fetchToCache(t, mode, refresh, ctx, signal);
+          const r = await fetchToCache(t, mode, refresh, ctx, signal);
+          // Fan-out returns paths only, so the whole body stayed out of the prompt.
+          accounting.recordWithheld(r.entry.meta.contentBytes);
+          return r;
         } finally {
           onUpdate?.({ content: [{ type: "text", text: `fetched ${++done}/${targets.length}` }] });
         }
@@ -247,6 +253,7 @@ export default function (pi: ExtensionAPI) {
       const { entry, fromCache, stale } = await fetchToCache(targets[0], mode, params.refresh, ctx, signal, onUpdate);
       const content = readFileSync(entry.contentPath, "utf8");
       const t = truncateHead(content, { maxLines: PREVIEW_LINES, maxBytes: PREVIEW_BYTES });
+      accounting.recordWithheld(content.length - t.content.length);
 
       const footer = [
         "",
@@ -522,6 +529,7 @@ export default function (pi: ExtensionAPI) {
               const s = cache.stats(root);
               return `${root === writeRoot ? "▸" : " "}${tag} ${s.entries} entries (${formatSize(s.bytes)}) | ${root}`;
             }),
+            accounting.summary(),
             `handlers: ${listHandlers().map((h) => h.name).join(", ")}`,
           ]);
           return;
