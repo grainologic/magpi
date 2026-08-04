@@ -13,6 +13,8 @@ test("handler routing picks the right handler", () => {
     ["https://en.wikipedia.org/wiki/Zebra", "wikipedia"],
     ["https://www.wikidata.org/wiki/Q42", "wikipedia"],
     ["https://www.npmjs.com/package/@scope/pkg", "packages"],
+    ["https://pi.dev/packages/pi-magpi", "packages"],
+    ["https://pi.dev/packages", "webpage"], // the catalog listing is an ordinary page
     ["https://pypi.org/project/requests/", "packages"],
     ["https://crates.io/crates/serde", "packages"],
     ["https://pkg.go.dev/golang.org/x/mod", "packages"],
@@ -40,6 +42,8 @@ test("registry matchers extract package identifiers", () => {
   const byName = Object.fromEntries(REGISTRIES.map((r) => [r.name, r]));
   assert.equal(byName["npm"].match(new URL("https://www.npmjs.com/package/@scope/pkg")), "@scope/pkg");
   assert.equal(byName["npm"].match(new URL("https://www.npmjs.com/package/lodash")), "lodash");
+  assert.equal(byName["npm"].match(new URL("https://pi.dev/packages/pi-magpi")), "pi-magpi");
+  assert.equal(byName["npm"].match(new URL("https://pi.dev/packages")), undefined, "the catalog is not a package");
   assert.equal(byName["pypi"].match(new URL("https://pypi.org/project/requests/")), "requests");
   assert.equal(byName["maven"].match(new URL("https://mvnrepository.com/artifact/g.id/artifact/1.2")), "g.id:artifact:1.2");
 });

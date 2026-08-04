@@ -41,6 +41,12 @@ test("npm registry handler returns metadata + readme", { skip: !online }, async 
   assert.match(r.content, /version:/);
 });
 
+test("pi.dev package pages resolve through npm", { skip: !online }, async () => {
+  const r = await fetchVia("https://pi.dev/packages/pi-magpi");
+  assert.equal(r.kind, "package-info");
+  assert.match(r.content, /pi-magpi \(npm\)/);
+});
+
 test("github handler returns readme with metadata header", { skip: !online }, async () => {
   const r = await fetchVia("https://github.com/sindresorhus/p-retry");
   assert.equal(r.kind, "readme");
