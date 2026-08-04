@@ -46,8 +46,8 @@ interface Completion {
 
 /** Every /magpi subcommand, with the help text the picker shows beside it. */
 const SUBCOMMANDS: Completion[] = [
-  { value: "status", description: "Scope, ttl, budget, and cache sizes" },
-  { value: "cache stats", description: "Per-root totals, recent entries, and this session's savings" },
+  { value: "status", description: "This session: scope, ttl, budget, cache sizes, and savings" },
+  { value: "cache stats", description: "What is on disk: per-root totals and the most recent entries" },
   { value: "cache clear", description: "Delete every entry in the write-scope cache" },
   { value: "cache prune", description: "Delete entries older than the ttl" },
   { value: "scope global", description: "Write new entries to the global cache" },
@@ -72,8 +72,8 @@ const HELP = [
   "  magpi_cached   list and full-text search the cache before fetching anything",
   "",
   "Commands",
-  "  /magpi                       scope, ttl, budget, cache sizes, handlers",
-  "  /magpi cache stats           per-root totals, recent entries, session savings",
+  "  /magpi                       this session: scope, ttl, budget, sizes, savings",
+  "  /magpi cache stats           what is on disk: per-root totals, recent entries",
   "  /magpi cache clear           delete every entry in the write-scope cache",
   "  /magpi cache prune           delete entries older than the ttl",
   "  /magpi scope global|project  where new entries are written",
@@ -650,6 +650,7 @@ export default function (pi: ExtensionAPI) {
               const s = cache.stats(root);
               return `${root === writeRoot ? "▸" : " "}${tag} ${s.entries} entries (${formatSize(s.bytes)}) | ${root}`;
             }),
+            accounting.summary(),
             `handlers: ${listHandlers().map((h) => h.name).join(", ")}`,
           ]);
           return;
@@ -673,7 +674,6 @@ export default function (pi: ExtensionAPI) {
                 const s = cache.stats(root);
                 return `${root === writeRoot ? "▸" : " "}${tag} ${s.entries} entries (${formatSize(s.bytes)}) | ${root}`;
               }),
-              accounting.summary(),
               ...entries.slice(0, 15).map(({ tag, e }) => `${tag} ${e.ageHours.toFixed(1)}h  ${e.meta.kind.padEnd(12)} ${e.meta.url}`),
               total > 15 ? `... and ${total - 15} more` : "",
             ].filter(Boolean));

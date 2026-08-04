@@ -63,7 +63,7 @@ The last-resort role is automatic: at session start MagPi looks for other active
 - **Promotion**: one entry per URL. Fetching `full` after `light` upgrades that entry in place rather than storing the page twice, and a later `light` request is answered from the `full` copy.
 - **Dead links**: a 404 gets the Wayback Machine's latest snapshot, labeled with its capture date.
 - **Self-healing**: the search index rebuilds itself from the files at session start whenever something broke it.
-- **Accounting**: `/magpi cache stats` reports what the session actually saved: fetches, cache hits, an estimate of the tokens kept out of context, and how many pruning passes it cost. Every number is measured from MagPi's own work, with nothing inferred from the model.
+- **Accounting**: `/magpi status` reports what the session actually saved: fetches, cache hits, an estimate of the tokens kept out of context, and how many pruning passes it cost. Session numbers live in `status`; what is on disk lives in `cache stats`. Every number is measured from MagPi's own work, with nothing inferred from the model.
 - **Always visible**: the cache is real disk, so the TUI footer shows its weight: `🐦 magpi ▸G12 L3 · 40MB |` (entries per cache, `▸` marks where writes go, then total size). An empty cache drops its tag and an empty MagPi drops out of the line entirely, because every extension shares that row.
 
 ## MagPi and pi-web-access
@@ -78,8 +78,8 @@ MagPi arranges this split automatically: at session start it looks for other act
 
 ```
 /magpi help            # reference card: tools, commands, cache paths, config keys
-/magpi status          # scope, ttl, budget, cache size, handler list
-/magpi cache stats     # recent entries with age, plus this session's savings
+/magpi status          # this session: scope, ttl, budget, cache size, savings, handler list
+/magpi cache stats     # what's on disk: per-root totals and recent entries with age
 /magpi cache prune     # delete entries older than the ttl
 /magpi cache clear
 /magpi scope global|project
