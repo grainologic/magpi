@@ -38,6 +38,69 @@ function normalizeUrl(raw: string): URL {
   return new URL(s);
 }
 
+interface Completion {
+  value: string;
+  description: string;
+}
+
+/** Every /magpi subcommand, with the help text the picker shows beside it. */
+const SUBCOMMANDS: Completion[] = [
+  { value: "status", description: "Scope, ttl, budget, cache sizes, and this session's savings" },
+  { value: "cache stats", description: "Per-root totals and the most recent entries" },
+  { value: "cache clear", description: "Delete every entry in the write-scope cache" },
+  { value: "cache prune", description: "Delete entries older than the ttl" },
+  { value: "scope global", description: "Write new entries to the global cache" },
+  { value: "scope project", description: "Write new entries to this project's cache" },
+  { value: "ttl", description: "Set how many hours an entry stays fresh" },
+  { value: "max", description: "Set the cache size budget in MB" },
+  { value: "reindex", description: "Rebuild the search index from the files on disk" },
+  { value: "handlers", description: "List the registered fetch handlers" },
+];
+
+/** Suggested values for the subcommands that take a number. */
+const SUBCOMMAND_VALUES: Record<string, Completion[]> = {
+  ttl: [
+    { value: "1", description: "1 hour, for pages that move" },
+    { value: "24", description: "1 day, the default" },
+    { value: "168", description: "1 week" },
+    { value: "720", description: "30 days, for reference docs" },
+  ],
+  max: [
+    { value: "0", description: "No budget, keep everything" },
+    { value: "100", description: "100 MB" },
+    { value: "500", description: "500 MB" },
+    { value: "2000", description: "2 GB" },
+  ],
+};
+
+const toItems = (rows: Completion[], prefix = "") =>
+  rows.map((r) => {
+    const value = prefix ? `${prefix} ${r.value}` : r.value;
+    return { value, label: value, description: r.description };
+  });
+
+/**
+ * Complete a /magpi argument. Returns whole-argument values, since the picker
+ * replaces everything typed after the command name. Exported for the selfcheck.
+ */
+export function completeCommand(argumentPrefix: string) {
+  const typed = argumentPrefix.replace(/^\s+/, "");
+  const [head, ...rest] = typed.split(/\s+/);
+
+  // Past the first word of a numeric subcommand, suggest values for it.
+  const values = SUBCOMMAND_VALUES[head];
+  if (values && (rest.length > 0 || /\s$/.test(typed))) {
+    const items = toItems(
+      values.filter((v) => v.value.startsWith(rest.join(" "))),
+      head,
+    );
+    return items.length > 0 ? items : null;
+  }
+
+  const items = toItems(SUBCOMMANDS.filter((s) => s.value.startsWith(typed)));
+  return items.length > 0 ? items : null;
+}
+
 export default function (pi: ExtensionAPI) {
   setConfigDirName(CONFIG_DIR_NAME);
 
@@ -512,14 +575,9 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
-  const SUBCOMMANDS = ["status", "cache stats", "cache clear", "cache prune", "scope global", "scope project", "ttl ", "max ", "reindex", "handlers"];
-
   pi.registerCommand("magpi", {
     description: "MagPi: status | cache stats|clear|prune | scope global|project | ttl <hours> | max <MB> | reindex | handlers",
-    getArgumentCompletions: (prefix) => {
-      const items = SUBCOMMANDS.filter((s) => s.startsWith(prefix)).map((s) => ({ value: s, label: s }));
-      return items.length > 0 ? items : null;
-    },
+    getArgumentCompletions: completeCommand,
     handler: async (args, ctx) => {
       const cfg = loadConfig(ctx.cwd, ctx.isProjectTrusted());
       const writeRoot = cacheRoot(ctx.cwd, cfg);
