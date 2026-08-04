@@ -7,9 +7,11 @@ When I'm using an LLM agent harness, the most frustrating thing is asking it som
 
 ## What is MagPi?
 
-A token-frugal, mostly mechanical, web fetch & search for [pi](https://pi.dev). No API keys, no self-hosting.
+A token-frugal, mechanical web fetch & search for [pi](https://pi.dev). No API keys, no self-hosting.
 
 MagPi's job is to kill the "I can't look that up" dead end, and cheaply. Everything MagPi fetches becomes part of a local library the model can list, grep, and full-text search, in this session and every one after. The LLM gets a short preview plus a file path; it reads the rest on demand with pi's own `read`/`grep`. Ask about that repo again next week and it comes off disk.
+
+Mechanical means every step is plain code: extraction, topic ranking, the cache index, the savings accounting. MagPi calls no model of its own, so a fetch runs the same on a frontier model and on whatever small thing you have running locally. The model gives it a URL and a question, and the rest is the same code every time.
 
 ## Install
 
@@ -50,7 +52,7 @@ MagPi remembers what it fetched, and makes sure the model does too. This is the 
 
 ### `magpi_search`
 
-This is deliberately a **last resort**, and honest about it. If you have a real search tool installed, or if your LLM has search capabilities, use that for searching. MagPi's job here is only to make sure a keyless, zero-config setup never hits a dead end. It tries DuckDuckGo Lite, then Wikipedia, then HN Algolia, then Context7 (all free rate-limited endpoints; the first source with results wins). A rate-limited source is skipped for the next one immediately, with no retry and no backoff: sleeping inside a tool call costs more than failing over. When everything fails, MagPi asks *you* to paste results: the dialog names the query to run and takes URLs one per line. It also tells the model to ask you before answering from stale memory or training data. Feed the URLs it finds to `magpi_fetch`, or pass `fetch_top` to pull the top results into the cache in the same call.
+This is deliberately a **last resort**, and honest about it. If you have a real search tool installed, or if your LLM has search capabilities, use that for searching. MagPi's job here is only to make sure a setup with nothing configured still has something. It tries DuckDuckGo Lite, then Wikipedia, then HN Algolia, then Context7 (all free rate-limited endpoints; the first source with results wins). A rate-limited source is skipped for the next one immediately, with no retry and no backoff: sleeping inside a tool call costs more than failing over. When everything fails, MagPi asks *you* to paste results: the dialog names the query to run and takes URLs one per line. It also tells the model to ask you before answering from stale memory or training data. Feed the URLs it finds to `magpi_fetch`, or pass `fetch_top` to pull the top results into the cache in the same call.
 
 Context7 is last in the rotation on purpose: it only knows libraries, so on a general query it would answer confidently and wrongly. It earns the last slot by being the steadiest of the four when the others are rate-limited. Ask for it by name (`source: "context7"`) to search library and framework documentation directly, which beats a web search for API questions. Its results point at Context7's plaintext endpoint, so `magpi_fetch` caches them like anything else.
 
@@ -72,7 +74,9 @@ The last-resort role is automatic: at session start MagPi looks for other active
 
 [pi-web-access](https://github.com/nicobailon/pi-web-access) is a better extension for what it is. A dozen-plus real search providers, LLM-synthesized answers with citations, video understanding, PDFs, blocked-page rescue chains. If you can use pi-web-access (or any real search tool) for searching, you should. Search quality is its game, and MagPi doesn't exist to compete there.
 
-MagPi's game is fetching cheaply. So the ideal setup is both: search with something else, fetch with MagPi. Fetching is where MagPi earns its keep: the cross-session library, structured extractors for a dozen kinds of site, and a public handler API for your own. Searching is where MagPi stays the last resort, there so a keyless setup always has something.
+MagPi's game is fetching cheaply. So the ideal setup is both: search with something else, fetch with MagPi. Fetching is where MagPi earns its keep: the cross-session library, structured extractors for a dozen kinds of site, and a public handler API for your own. Searching is where MagPi stays the last resort, there so a bare install always has something.
+
+pi-web-access also works on a bare install, through Exa MCP and pi's own Codex auth. Where the two differ is the model: its summaries, `answer` mode, and `source_check` run one, which buys the synthesis MagPi leaves to the agent. MagPi behaves the same on every model, which is worth more the smaller (or stranger) your model is.
 
 MagPi arranges this split automatically: at session start it looks for other active search tools, and if it finds one, `magpi_search` demotes itself and tells the model to prefer that tool by name. You install both, and each does what it's best at.
 
