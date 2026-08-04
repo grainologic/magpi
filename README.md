@@ -42,23 +42,29 @@ Throw a URL at it. The first handler that matches wins, and each one knows the s
 
 `full` mode puts files under the cache entry's `tree/` directory. Point pi's `ls`/`read`/`grep` at it. `urls: [...]` batch-fetches up to 5 in parallel.
 
+Fetching a long page to answer a specific question? Pass `topic` and MagPi returns the sections that match, instead of the top of the document, which on a reference page is usually the table of contents. Against Node's 387 KB `fs` docs, `topic: "watch a directory for changes"` comes back with `fs.watch` and `fsPromises.watch`. The model fills this in from the question it is already answering; you never supply keywords. A topic that matches nothing falls back to the head of the page, so a bad guess is never worse than no guess.
+
 ### `magpi_cached`
 
 MagPi remembers what it fetched, and makes sure the model does too. This is the library's table of contents: every entry with its URL, kind, age, and local path, covering every past session. Pass `query` and it becomes ranked full-text search over everything ever cached; the model gets the matching sentence plus the file path, and reads the rest from disk. That's about as cheap as recall gets.
 
 ### `magpi_search`
 
-This is deliberately a **last resort**, and honest about it. If you have a real search tool installed, or if your LLM has search capabilities, use that for searching. MagPi's job here is only to make sure a keyless, zero-config setup never hits a dead end. It tries DuckDuckGo Lite, then Wikipedia, then HN Algolia (all free rate-limited endpoints; the first source with results wins). When everything fails, MagPi asks *you* to paste results, and tells the model to ask you before answering from stale memory or training data. Feed the URLs it finds to `magpi_fetch`, or pass `fetch_top` to pull the top results into the cache in the same call.
+This is deliberately a **last resort**, and honest about it. If you have a real search tool installed, or if your LLM has search capabilities, use that for searching. MagPi's job here is only to make sure a keyless, zero-config setup never hits a dead end. It tries DuckDuckGo Lite, then Wikipedia, then HN Algolia, then Context7 (all free rate-limited endpoints; the first source with results wins). When everything fails, MagPi asks *you* to paste results, and tells the model to ask you before answering from stale memory or training data. Feed the URLs it finds to `magpi_fetch`, or pass `fetch_top` to pull the top results into the cache in the same call.
+
+Context7 is last in the rotation on purpose: it only knows libraries, so on a general query it would answer confidently and wrongly. It earns the last slot by being the steadiest of the four when the others are rate-limited. Ask for it by name (`source: "context7"`) to search library and framework documentation directly, which beats a web search for API questions. Its results point at Context7's plaintext endpoint, so `magpi_fetch` caches them like anything else.
 
 The last-resort role is automatic: at session start MagPi looks for other active search tools, and if one exists, tells the model to prefer it by name and treat MagPi as the fallback.
 
 ## Beyond the cache
 
-- **Context pruning**: older fetch previews collapse to a one-line pointer before each LLM call. The full text stays on disk.
+- **Context pruning**: older fetch previews collapse to a one-line pointer before each LLM call. The full text stays on disk. Rewriting an old message costs a prompt cache break, so a pass runs only when the previews it reclaims are worth a large enough share of the context that break invalidates. A small preview in a long conversation is left alone.
 - **Cache hints**: paste an already-cached URL into your prompt and the model is pointed straight at the local copy.
+- **Promotion**: one entry per URL. Fetching `full` after `light` upgrades that entry in place rather than storing the page twice, and a later `light` request is answered from the `full` copy.
 - **Dead links**: a 404 gets the Wayback Machine's latest snapshot, labeled with its capture date.
 - **Self-healing**: the search index rebuilds itself from the files at session start whenever something broke it.
-- **Always visible**: the cache is real disk, so the TUI footer always shows its weight: `magpi ▸G12 L3 · 40MB` (entries per cache, `▸` marks where writes go, then total size).
+- **Accounting**: `/magpi cache stats` reports what the session actually saved: fetches, cache hits, an estimate of the tokens kept out of context, and how many pruning passes it cost. Every number is measured from MagPi's own work, with nothing inferred from the model.
+- **Always visible**: the cache is real disk, so the TUI footer shows its weight: `🐦 magpi ▸G12 L3 · 40MB |` (entries per cache, `▸` marks where writes go, then total size). An empty cache drops its tag and an empty MagPi drops out of the line entirely, because every extension shares that row.
 
 ## MagPi and pi-web-access
 
@@ -71,8 +77,9 @@ MagPi arranges this split automatically: at session start it looks for other act
 ## `/magpi` command
 
 ```
+/magpi help            # reference card: tools, commands, cache paths, config keys
 /magpi status          # scope, ttl, budget, cache size, handler list
-/magpi cache stats     # recent entries with age
+/magpi cache stats     # recent entries with age, plus this session's savings
 /magpi cache prune     # delete entries older than the ttl
 /magpi cache clear
 /magpi scope global|project
@@ -99,7 +106,7 @@ Fetches stick to the public web: loopback, link-local, and private-range address
 
 There are two caches, global and project-local, and reads always union both; `cacheScope` picks where new fetches land, and listings tag entries `G`/`L`.
 
-Entries live at readable, host-grouped paths like `magpi-cache/github.com/user-repo-a1b2c3d4/`, each holding `content.md`, `meta.json`, and optionally `tree/`, so a domain's folder is `ls`/`grep`-able as a unit. URLs are canonicalized first (fragments and tracking params dropped, query sorted), so page variants share one entry. Each root also carries `index.db`, the rebuildable search index behind `query` and LRU eviction; `src/cachedb.ts` documents how it works and how it degrades.
+Entries live at readable, host-grouped paths like `magpi-cache/github.com/user-repo-a1b2c3d4/`, each holding `content.md`, `meta.json`, and optionally `tree/`, so a domain's folder is `ls`/`grep`-able as a unit. URLs are canonicalized first (fragments and tracking params dropped, query sorted), so page variants share one entry, and `light` and `full` share it too. Each root also carries `index.db`, the rebuildable search index behind `query` and LRU eviction; `src/cachedb.ts` documents how it works and how it degrades.
 
 ## Extending: custom handlers
 
@@ -131,6 +138,7 @@ Emit in `session_start` (all extension factories have run by then). Custom handl
 
 ```bash
 npm install
-npm test                 # runs test/*.selfcheck.ts: offline checks + live network checks (auto-skipped when offline)
+npm test                 # runs test/*.selfcheck.ts: offline checks + live network checks
+                         # network.selfcheck.ts skips itself when offline; the live search check does not
 pi -ne -e . # try it live
 ```
