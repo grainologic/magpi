@@ -7,6 +7,7 @@
     "pi",
     "pi-coding-agent",
     "pi-extension",
+    "extension",
     "web-fetch",
     "web-search",
     "fetch",
@@ -28,6 +29,9 @@
     "src",
     "resources"
   ],
+  "scripts": {
+    "test": "tsx --test test/*.selfcheck.ts"
+  },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "linkedom": "^0.18.13",
