@@ -25,7 +25,7 @@ import {
   saveConfig,
   setConfigDirName,
 } from "./config.js";
-import { assertPublicTarget, type FetchMode } from "./handlers/handler.js";
+import { FETCH_DEADLINE_MS, assertPublicTarget, type FetchMode, withDeadline } from "./handlers/handler.js";
 import { listHandlers, registerHandler, resolveHandler } from "./handlers/registry.js";
 import { formatResults, webSearch } from "./search.js";
 
@@ -264,12 +264,15 @@ export default function (pi: ExtensionAPI) {
       onUpdate?.({ content: [{ type: "text", text: `Fetching via ${handler.name}...` }] });
       try {
         const entryDir = cache.entryDir(roots[0], url.href);
-        const result = await handler.fetch(url, {
-          mode,
-          entryDir,
-          signal,
-          exec: (cmd, args, opts) => pi.exec(cmd, args, opts),
-        });
+        // One deadline over the handler, however many calls it makes inside.
+        const result = await withDeadline(FETCH_DEADLINE_MS[mode], signal, (deadlineSignal) =>
+          handler.fetch(url, {
+            mode,
+            entryDir,
+            signal: deadlineSignal,
+            exec: (cmd, args, opts) => pi.exec(cmd, args, opts),
+          }),
+        );
         entry = cache.store(roots[0], url.href, mode, {
           handler: handler.name,
           kind: result.kind,

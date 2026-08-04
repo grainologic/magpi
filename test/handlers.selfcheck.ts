@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertPublicTarget, isPrivateIp } from "../src/handlers/handler.js";
+import { assertPublicTarget, isPrivateIp, withDeadline } from "../src/handlers/handler.js";
 import { REGISTRIES } from "../src/handlers/registries/index.js";
 import { registerHandler, resolveHandler } from "../src/handlers/registry.js";
 
@@ -55,6 +55,25 @@ test("ssrf guard blocks private targets and bad schemes", async () => {
   await assert.rejects(assertPublicTarget(new URL("http://localhost:3000/")), /loopback/);
   await assert.rejects(assertPublicTarget(new URL("ftp://example.com/x")), /scheme/);
   await assert.doesNotReject(assertPublicTarget(new URL("https://8.8.8.8/")));
+});
+
+test("withDeadline gives up on work that ignores its signal", async () => {
+  const wedged = () => new Promise<string>(() => {}); // never settles, never listens
+  await assert.rejects(withDeadline(50, undefined, wedged), /gave up after/);
+
+  const quick = await withDeadline(5_000, undefined, async (signal) => {
+    assert.equal(signal.aborted, false, "work sees a live signal");
+    return "done";
+  });
+  assert.equal(quick, "done");
+
+  // The caller's own cancellation still reaches the work.
+  const outer = new AbortController();
+  const seen = withDeadline(5_000, outer.signal, (signal) =>
+    new Promise<string>((resolve) => signal.addEventListener("abort", () => resolve("cancelled"))),
+  );
+  outer.abort();
+  assert.equal(await seen, "cancelled");
 });
 
 test("registerHandler validates shape and takes priority", () => {

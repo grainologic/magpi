@@ -43,6 +43,15 @@ const UA = "Mozilla/5.0 (compatible; MagPi/1.0; +https://github.com/grainologic/
 const TEXT_CAP = 5 * 1024 * 1024; // 5MB of text is already absurd for an LLM cache
 const DOWNLOAD_CAP = 100 * 1024 * 1024;
 const TIMEOUT_MS = 30_000;
+const DNS_TIMEOUT_MS = 5_000;
+
+/**
+ * Ceiling for one whole fetch, by mode. The per-request timeout above bounds a
+ * single call, not a handler that makes several in a row, and nothing at all
+ * bounds a dns lookup, a clone, or pdf text extraction. Full mode gets the
+ * looser figure because it clones repos and unpacks archives.
+ */
+export const FETCH_DEADLINE_MS: Record<FetchMode, number> = { light: 90_000, full: 300_000 };
 
 export class FetchError extends Error {
   constructor(
@@ -91,7 +100,14 @@ export async function assertPublicTarget(url: URL): Promise<void> {
   // Preflight resolves the name once; a redirect hop to a private
   // address can still slip through. Upgrade path: manual redirect loop in httpGet.
   try {
-    const addrs = await lookup(host, { all: true });
+    // node's dns lookup takes no signal and can sit on a threadpool slot
+    // forever, so the preflight gets its own clock.
+    const addrs = await Promise.race([
+      lookup(host, { all: true }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`dns lookup for ${host} timed out`)), DNS_TIMEOUT_MS).unref();
+      }),
+    ]);
     if (addrs.some((a) => isPrivateIp(a.address))) throw blocked(`${host} resolves to a private address`);
   } catch (err) {
     if (err instanceof FetchError) throw err;
@@ -102,6 +118,28 @@ export async function assertPublicTarget(url: URL): Promise<void> {
 function withTimeout(signal?: AbortSignal): AbortSignal {
   const t = AbortSignal.timeout(TIMEOUT_MS);
   return signal ? AbortSignal.any([signal, t]) : t;
+}
+
+/**
+ * Run `work` under a hard deadline. Aborting is a request, not a guarantee:
+ * extraction and archive walks are plain cpu work that ignores the signal, so
+ * the deadline also rejects on its own and hands the caller back its turn.
+ */
+export function withDeadline<T>(
+  ms: number,
+  signal: AbortSignal | undefined,
+  work: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const deadline = AbortSignal.timeout(ms);
+  const scoped = signal ? AbortSignal.any([signal, deadline]) : deadline;
+  return Promise.race([
+    work(scoped),
+    new Promise<never>((_, reject) => {
+      deadline.addEventListener("abort", () =>
+        reject(new FetchError(`Fetch gave up after ${Math.round(ms / 1000)}s`)),
+      );
+    }),
+  ]);
 }
 
 export async function httpGet(
