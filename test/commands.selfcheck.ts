@@ -12,6 +12,7 @@ test("an empty prefix offers every subcommand, each with help text", () => {
     "every row carries a description and completes to its own label",
   );
   assert.ok(values("").includes("cache prune"));
+  assert.ok(values("").includes("help"), "help is discoverable from the picker");
 });
 
 test("a partial subcommand narrows the menu", () => {

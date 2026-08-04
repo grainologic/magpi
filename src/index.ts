@@ -5,7 +5,7 @@ import {
   truncateHead,
 } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { Text } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { readFileSync } from "node:fs";
 import * as accounting from "./accounting.js";
@@ -55,6 +55,41 @@ const SUBCOMMANDS: Completion[] = [
   { value: "max", description: "Set the cache size budget in MB" },
   { value: "reindex", description: "Rebuild the search index from the files on disk" },
   { value: "handlers", description: "List the registered fetch handlers" },
+  { value: "help", description: "Show the reference card" },
+];
+
+/** Reference card for /magpi help. Blank strings separate the sections. */
+const HELP = [
+  "magpi: token-frugal web fetch and search",
+  "",
+  "Fetched pages go to a disk cache and only a preview reaches the prompt.",
+  "Read or grep the returned path for the rest instead of fetching again.",
+  "",
+  "Tools the model calls",
+  "  magpi_fetch    fetch a url, or up to 5 at once, and return the cache path",
+  "  magpi_search   ddg, wikipedia, hn, context7; fetch_top caches the best hits",
+  "  magpi_cached   list and full-text search the cache before fetching anything",
+  "",
+  "Commands",
+  "  /magpi                       scope, ttl, budget, cache sizes, handlers",
+  "  /magpi cache stats           per-root totals, recent entries, session savings",
+  "  /magpi cache clear           delete every entry in the write-scope cache",
+  "  /magpi cache prune           delete entries older than the ttl",
+  "  /magpi scope global|project  where new entries are written",
+  "  /magpi ttl <hours>           how long an entry stays fresh (default 24)",
+  "  /magpi max <MB>              size budget, 0 disables eviction",
+  "  /magpi reindex               rebuild the search index from the files on disk",
+  "  /magpi handlers              list the registered fetch handlers",
+  "  /magpi help                  this card",
+  "",
+  "Caches (reads union both, writes follow the scope)",
+  "  global   ~/.pi/agent/magpi-cache",
+  "  project  <project>/.pi/magpi-cache",
+  "",
+  "Config (global first, then a trusted project override)",
+  "  global   ~/.pi/agent/magpi.json",
+  "  project  <project>/.pi/magpi.json",
+  "  keys     cacheScope, ttlHours, maxCacheMB, allowPrivateNetwork",
 ];
 
 /** Suggested values for the subcommands that take a number. */
@@ -577,7 +612,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.registerCommand("magpi", {
-    description: "MagPi: status | cache stats|clear|prune | scope global|project | ttl <hours> | max <MB> | reindex | handlers",
+    description: "MagPi: status | cache stats|clear|prune | scope global|project | ttl <hours> | max <MB> | reindex | handlers | help",
     getArgumentCompletions: completeCommand,
     handler: async (args, ctx) => {
       const cfg = loadConfig(ctx.cwd, ctx.isProjectTrusted());
@@ -677,8 +712,28 @@ export default function (pi: ExtensionAPI) {
           notify(listHandlers().map((h) => `${h.name}: ${h.description}`));
           return;
         }
+        case "help":
+        case "?": {
+          // A notify balloon scrolls badly at this length, so the TUI gets a
+          // dismissable panel and every other mode gets the plain lines.
+          if (ctx.mode !== "tui") {
+            notify(HELP);
+            return;
+          }
+          await ctx.ui.custom((_tui, theme, _kb, done) => {
+            const card = new Container();
+            for (const line of HELP) card.addChild(new Text(line ? theme.fg("text", line) : "", 0, 0));
+            card.addChild(new Text(theme.fg("dim", "press any key to close"), 1, 0));
+            return {
+              render: (w: number) => card.render(w),
+              invalidate: () => card.invalidate(),
+              handleInput: () => done(undefined),
+            };
+          });
+          return;
+        }
         default:
-          notify([`Unknown subcommand: ${cmd}`, "Try: status | cache stats|clear | scope | ttl | handlers"], "error");
+          notify([`Unknown subcommand: ${cmd}`, "Try /magpi help for the full list"], "error");
       }
     },
   });
