@@ -33,24 +33,24 @@ Throw a URL at it. The first handler that matches wins, and each one knows the s
 | `github` | github.com, raw, gists | README + metadata; raw files; issues/PRs with comments | shallow clone into cache |
 | `gitlab` | gitlab.com (nested groups too) | README + metadata; raw files | shallow clone into cache |
 | `wikipedia` | *.wikipedia.org, wikidata.org | plaintext article extract | - |
-| `packages` | npm, PyPI, crates.io, pkg.go.dev, RubyGems, Packagist, Hex, Maven | metadata + readme | download & extract the package into cache |
+| `packages` | npm, pi.dev, PyPI, crates.io, pkg.go.dev, RubyGems, Packagist, Hex, Maven | metadata + readme | download & extract the package into cache |
 | `stackexchange` | Stack Overflow, Superuser, *.stackexchange.com | question + top answers | - |
 | `reddit` | reddit.com threads | post + top comments | - |
 | `hackernews` | news.ycombinator.com items | story + top comments | - |
-| `arxiv` | arxiv.org/abs, /pdf | title, authors, abstract | - |
+| `arxiv` | arxiv.org/abs, /pdf, /html | title, authors, abstract; the abstract page when the export API is down | - |
 | `webpage` | everything else | readable markdown; PDFs as text; a site's `llms.txt` when published | site docs via `llms-full.txt`, if published |
 
-`full` mode puts files under the cache entry's `tree/` directory. Point pi's `ls`/`read`/`grep` at it. `urls: [...]` batch-fetches up to 5 in parallel.
+`full` mode puts files under the cache entry's `tree/` directory. Point pi's `ls`/`read`/`grep` at it. `urls: [...]` batch-fetches up to 5 in parallel. A pi.dev package page goes to npm for its metadata, since the catalog is npm's `pi-package` keyword slice and the registry copy skips the rendered page.
 
-Fetching a long page to answer a specific question? Pass `topic` and MagPi returns the sections that match, instead of the top of the document, which on a reference page is usually the table of contents. Against Node's 387 KB `fs` docs, `topic: "watch a directory for changes"` comes back with `fs.watch` and `fsPromises.watch`. The model fills this in from the question it is already answering; you never supply keywords. A topic that matches nothing falls back to the head of the page, so a bad guess is never worse than no guess.
+Fetching a long page to answer a specific question? Pass `topic` and MagPi returns the sections that match, instead of the top of the document, which on a reference page is usually the table of contents. Against Node's 378 KB `fs` docs, `topic: "watch a directory for changes"` comes back with `fs.watch` and `fsPromises.watch`. The model fills this in from the question it is already answering; you never supply keywords. A topic that matches nothing falls back to the head of the page.
 
 ### `magpi_cached`
 
-MagPi remembers what it fetched, and makes sure the model does too. This is the library's table of contents: every entry with its URL, kind, age, and local path, covering every past session. Pass `query` and it becomes ranked full-text search over everything ever cached; the model gets the matching sentence plus the file path, and reads the rest from disk. That's about as cheap as recall gets.
+MagPi remembers what it fetched, and makes sure the model does too. This is the library's table of contents: every entry with its URL, kind, age, and local path, covering every past session. Pass `query` and it becomes ranked full-text search over everything ever cached; the model gets the matching sentence plus the file path, and reads the rest from disk.
 
 ### `magpi_search`
 
-This is deliberately a **last resort**, and honest about it. If you have a real search tool installed, or if your LLM has search capabilities, use that for searching. MagPi's job here is only to make sure a keyless, zero-config setup never hits a dead end. It tries DuckDuckGo Lite, then Wikipedia, then HN Algolia, then Context7 (all free rate-limited endpoints; the first source with results wins). When everything fails, MagPi asks *you* to paste results, and tells the model to ask you before answering from stale memory or training data. Feed the URLs it finds to `magpi_fetch`, or pass `fetch_top` to pull the top results into the cache in the same call.
+This is deliberately a **last resort**, and honest about it. If you have a real search tool installed, or if your LLM has search capabilities, use that for searching. MagPi's job here is only to make sure a keyless, zero-config setup never hits a dead end. It tries DuckDuckGo Lite, then Wikipedia, then HN Algolia, then Context7 (all free rate-limited endpoints; the first source with results wins). A rate-limited source is skipped for the next one immediately, with no retry and no backoff: sleeping inside a tool call costs more than failing over. When everything fails, MagPi asks *you* to paste results: the dialog names the query to run and takes URLs one per line. It also tells the model to ask you before answering from stale memory or training data. Feed the URLs it finds to `magpi_fetch`, or pass `fetch_top` to pull the top results into the cache in the same call.
 
 Context7 is last in the rotation on purpose: it only knows libraries, so on a general query it would answer confidently and wrongly. It earns the last slot by being the steadiest of the four when the others are rate-limited. Ask for it by name (`source: "context7"`) to search library and framework documentation directly, which beats a web search for API questions. Its results point at Context7's plaintext endpoint, so `magpi_fetch` caches them like anything else.
 
@@ -62,13 +62,15 @@ The last-resort role is automatic: at session start MagPi looks for other active
 - **Cache hints**: paste an already-cached URL into your prompt and the model is pointed straight at the local copy.
 - **Promotion**: one entry per URL. Fetching `full` after `light` upgrades that entry in place rather than storing the page twice, and a later `light` request is answered from the `full` copy.
 - **Dead links**: a 404 gets the Wayback Machine's latest snapshot, labeled with its capture date.
+- **Offline**: a fetch that fails on the network serves the cached copy at any age, flagged `STALE` in the footer with the date it was taken.
+- **Timeouts**: a fetch gets 90 seconds in `light` mode and 300 in `full`, which clones repos and unpacks archives. The ceiling covers the whole handler however many requests it makes, and it fires on work that ignores cancellation, such as PDF text extraction.
 - **Self-healing**: the search index rebuilds itself from the files at session start whenever something broke it.
 - **Accounting**: `/magpi status` reports what the session actually saved: fetches, cache hits, an estimate of the tokens kept out of context, and how many pruning passes it cost. Session numbers live in `status`; what is on disk lives in `cache stats`. Every number is measured from MagPi's own work, with nothing inferred from the model.
-- **Always visible**: the cache is real disk, so the TUI footer shows its weight: `🐦 magpi ▸G12 L3 · 40MB |` (entries per cache, `▸` marks where writes go, then total size). An empty cache drops its tag and an empty MagPi drops out of the line entirely, because every extension shares that row.
+- **Always visible**: the cache is real disk, so the TUI footer shows its weight: `🐦 magpi ▸G12 L3 · 40MB |` (entries per cache, `▸` marks where writes go, then total size). An empty cache drops its tag and an empty MagPi drops out of the line entirely, because every extension shares that row. The same bird marks MagPi's tool calls in the transcript, as `🐦 fetch`, `🐦 search`, and `🐦 cached`.
 
 ## MagPi and pi-web-access
 
-Let's be clear about this up front: [pi-web-access](https://github.com/nicobailon/pi-web-access) is a better extension for what it is. A dozen-plus real search providers, LLM-synthesized answers with citations, video understanding, PDFs, blocked-page rescue chains. If you can use pi-web-access (or any real search tool) for searching, you should. Search quality is its game, and MagPi doesn't exist to compete there.
+[pi-web-access](https://github.com/nicobailon/pi-web-access) is a better extension for what it is. A dozen-plus real search providers, LLM-synthesized answers with citations, video understanding, PDFs, blocked-page rescue chains. If you can use pi-web-access (or any real search tool) for searching, you should. Search quality is its game, and MagPi doesn't exist to compete there.
 
 MagPi's game is fetching cheaply. So the ideal setup is both: search with something else, fetch with MagPi. Fetching is where MagPi earns its keep: the cross-session library, structured extractors for a dozen kinds of site, and a public handler API for your own. Searching is where MagPi stays the last resort, there so a keyless setup always has something.
 
@@ -138,7 +140,9 @@ Emit in `session_start` (all extension factories have run by then). Custom handl
 
 ```bash
 npm install
-npm test                 # runs test/*.selfcheck.ts: offline checks + live network checks
-                         # network.selfcheck.ts skips itself when offline; the live search check does not
+npm test                 # test/*.selfcheck.ts: offline parsers and guards, plus live network checks
+                         # every check in network.selfcheck.ts skips itself when offline
 pi -ne -e . # try it live
 ```
+
+Each search source is checked on its own and is allowed to be rate-limited that run; the suite fails only when all four come back empty, which separates a bad day at DuckDuckGo from a parser that quietly rotted.
