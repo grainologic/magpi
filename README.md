@@ -2,7 +2,7 @@
 
 When I'm using an LLM agent harness, the most frustrating thing is asking it something, and then getting hit with the following reply:
 <div align="center">
-  <img src="resources/blurb.png" width="800" align="center" alt=""> 
+  <img src="resources/blurb.png" width="800" align="center" alt="An agent replying that it has no ability to access the internet"> 
 </div>
 
 ## What is MagPi?
