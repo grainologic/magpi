@@ -50,22 +50,33 @@ export function canonicalize(url: URL): string {
 }
 
 /**
- * Human/model-legible layout: <root>/<host>/<path-slug>[-full]-<hash8>/
+ * Human/model-legible layout: <root>/<host>/<path-slug>-<hash8>/
  * The slug lets the LLM ls/grep everything cached from a domain; the hash
  * guarantees uniqueness.
+ *
+ * One directory per URL, whatever the mode. A full fetch promotes the existing
+ * entry in place instead of writing a second copy of the same page.
  */
-export function entryDir(root: string, url: string, mode: string): string {
+export function entryDir(root: string, url: string): string {
   const u = new URL(url);
   // The URL parser bans slashes in hostnames but allows "..", which would
   // escape the cache root when joined. Neutralize all-dot hostnames.
   const host = /^\.+$/.test(u.hostname) ? "invalid-host" : u.hostname;
-  const hash8 = createHash("sha256").update(`${mode}:${url}`).digest("hex").slice(0, 8);
+  const hash8 = createHash("sha256").update(url).digest("hex").slice(0, 8);
   const slug =
     (u.pathname + u.search)
       .replace(/[^a-zA-Z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 40) || "root";
-  return join(root, host, `${slug}${mode === "full" ? "-full" : ""}-${hash8}`);
+  return join(root, host, `${slug}-${hash8}`);
+}
+
+/**
+ * Full content is a superset of light, so a full entry answers a light request.
+ * The reverse misses, and that miss is what triggers a promotion fetch.
+ */
+function satisfies(cached: string, wanted: string): boolean {
+  return cached === wanted || cached === "full";
 }
 
 function toEntry(dir: string, meta: CacheMeta): CacheEntry {
@@ -88,9 +99,10 @@ export function lookupAny(roots: string[], url: string, mode: string, ttlHours: 
 }
 
 export function lookup(root: string, url: string, mode: string, ttlHours: number): CacheEntry | undefined {
-  const dir = entryDir(root, url, mode);
+  const dir = entryDir(root, url);
   try {
     const meta: CacheMeta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8"));
+    if (!satisfies(meta.mode, mode)) return undefined;
     const entry = toEntry(dir, meta);
     if (entry.ageHours > ttlHours) return undefined;
     if (!existsSync(entry.contentPath)) return undefined;
@@ -107,8 +119,13 @@ export function store(
   mode: string,
   data: { handler: string; kind: string; title?: string; content: string; hasTree: boolean },
 ): CacheEntry {
-  const dir = entryDir(root, url, mode);
+  const dir = entryDir(root, url);
   mkdirSync(dir, { recursive: true });
+  // Demotion: a light entry has no tree, so an earlier clone in this dir goes.
+  // Safe when a handler just wrote one, since hasTree is true in that case.
+  // ponytail: a full fetch that throws before reaching here can leave a partial
+  // tree beside the old content; the next store or prune clears it.
+  if (!data.hasTree) rmSync(join(dir, "tree"), { recursive: true, force: true });
   const meta: CacheMeta = {
     url,
     mode,

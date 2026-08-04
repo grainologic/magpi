@@ -93,13 +93,9 @@ export default function (pi: ExtensionAPI) {
     for (const raw of urls) {
       try {
         const href = cache.canonicalize(new URL(raw));
-        for (const mode of ["light", "full"] as const) {
-          const e = cache.lookupAny(roots, href, mode, cfg.ttlHours);
-          if (e) {
-            hits.push(`${raw} -> ${e.contentPath}${e.treePath ? ` (+ files: ${e.treePath})` : ""}`);
-            break;
-          }
-        }
+        // A full entry answers a light lookup, so one probe covers both modes.
+        const e = cache.lookupAny(roots, href, "light", cfg.ttlHours);
+        if (e) hits.push(`${raw} -> ${e.contentPath}${e.treePath ? ` (+ files: ${e.treePath})` : ""}`);
       } catch {
         // not a parseable URL; skip
       }
@@ -145,7 +141,7 @@ export default function (pi: ExtensionAPI) {
       const handler = resolveHandler(url);
       onUpdate?.({ content: [{ type: "text", text: `Fetching via ${handler.name}...` }] });
       try {
-        const entryDir = cache.entryDir(roots[0], url.href, mode);
+        const entryDir = cache.entryDir(roots[0], url.href);
         const result = await handler.fetch(url, {
           mode,
           entryDir,

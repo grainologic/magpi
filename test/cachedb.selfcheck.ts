@@ -61,7 +61,7 @@ test("LRU eviction removes least-recently-used first", { skip }, () => {
 });
 
 test("all-dot hostnames cannot escape the cache root", () => {
-  const dir = cache.entryDir("/root", "https://../etc", "light").replace(/\\/g, "/");
+  const dir = cache.entryDir("/root", "https://../etc").replace(/\\/g, "/");
   assert.ok(dir.startsWith("/root/invalid-host/"), dir);
 });
 

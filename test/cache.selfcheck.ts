@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -20,11 +20,32 @@ test("canonicalize collapses URL variants into one key", () => {
 });
 
 test("entryDir paths are host-grouped and human-readable", () => {
-  const dir = cache.entryDir("/root", "https://github.com/user/repo", "light");
+  const dir = cache.entryDir("/root", "https://github.com/user/repo");
   assert.match(dir.replace(/\\/g, "/"), /\/root\/github\.com\/user-repo-[0-9a-f]{8}$/);
-  const full = cache.entryDir("/root", "https://github.com/user/repo", "full");
-  assert.match(full.replace(/\\/g, "/"), /user-repo-full-[0-9a-f]{8}$/);
-  assert.notEqual(dir, full, "mode is part of the key");
+  assert.notEqual(dir, cache.entryDir("/root", "https://github.com/user/other"), "url is the key");
+});
+
+test("full promotes a light entry in place, and light demotes it back", () => {
+  const root = mkdtempSync(join(tmpdir(), "magpi-promote-"));
+  const url = "https://example.com/repo";
+  const light = cache.store(root, url, "light", { handler: "github", kind: "readme", content: "readme", hasTree: false });
+
+  assert.equal(cache.lookup(root, url, "full", 24), undefined, "light does not answer a full request");
+
+  // Promotion: same dir, one entry, tree now present.
+  mkdirSync(join(light.dir, "tree"), { recursive: true });
+  writeFileSync(join(light.dir, "tree", "main.rs"), "fn main() {}");
+  const full = cache.store(root, url, "full", { handler: "github", kind: "clone", content: "clone", hasTree: true });
+  assert.equal(full.dir, light.dir, "promotion reuses the directory");
+  assert.equal(cache.stats(root).entries, 1, "promotion does not add a second entry");
+  assert.ok(cache.lookup(root, url, "full", 24), "full request now hits");
+  assert.equal(readFileSync(cache.lookup(root, url, "light", 24)!.contentPath, "utf8"), "clone", "full answers light");
+
+  // Demotion: explicit light store drops the clone.
+  cache.store(root, url, "light", { handler: "github", kind: "readme", content: "readme", hasTree: false });
+  assert.equal(existsSync(join(light.dir, "tree")), false, "demotion removes the tree");
+  assert.equal(cache.lookup(root, url, "full", 24), undefined, "full request misses again");
+  cache.clear(root);
 });
 
 test("lookupAny unions caches, first root wins", () => {
@@ -58,7 +79,7 @@ test("cache roundtrip, timestamps, ttl expiry, and prune", () => {
   const hit = cache.lookup(root, url, "light", 24);
   assert.ok(hit, "fresh entry is a hit");
   assert.equal(readFileSync(hit!.contentPath, "utf8"), "hello world");
-  assert.equal(cache.lookup(root, url, "full", 24), undefined, "mode is part of the key");
+  assert.equal(cache.lookup(root, url, "full", 24), undefined, "light entry does not answer a full request");
 
   // Age the entry past the ttl and confirm it misses
   const metaPath = join(stored.dir, "meta.json");
