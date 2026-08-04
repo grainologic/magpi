@@ -61,7 +61,7 @@ const SUBCOMMANDS: Completion[] = [
 
 /** Reference card for /magpi help. Blank strings separate the sections. */
 const HELP = [
-  "magpi: token-frugal web fetch and search",
+  "🐦 magpi: token-frugal web fetch and search",
   "",
   "Fetched pages go to a disk cache and only a preview reaches the prompt.",
   "Read or grep the returned path for the rest instead of fetching again.",
@@ -180,10 +180,10 @@ export default function (pi: ExtensionAPI) {
     accounting.reset();
     const trusted = ctx.isProjectTrusted();
     for (const p of invalidConfigPaths(ctx.cwd, trusted)) {
-      if (ctx.hasUI) ctx.ui.notify(`magpi: invalid JSON in ${p}; using defaults`, "error");
+      if (ctx.hasUI) ctx.ui.notify(`🐦 magpi: invalid JSON in ${p}; using defaults`, "error");
     }
     for (const root of bothRoots(ctx.cwd, loadConfig(ctx.cwd, trusted))) {
-      if (cache.heal(root) === "rebuilt" && ctx.hasUI) ctx.ui.notify(`magpi: search index rebuilt for ${root}`, "info");
+      if (cache.heal(root) === "rebuilt" && ctx.hasUI) ctx.ui.notify(`🐦 magpi: search index rebuilt for ${root}`, "info");
     }
     updateStatus(ctx);
   });
@@ -514,6 +514,13 @@ export default function (pi: ExtensionAPI) {
         details: { roots: Object.fromEntries(roots), count: entries.length },
       };
     },
+    // Without this pi falls back to printing the raw tool name, which is the
+    // one magpi line in the transcript that would carry no bird.
+    renderCall(args, theme) {
+      const a = (args ?? {}) as { query?: string; filter?: string };
+      const what = a.query ? `"${a.query}"` : a.filter ? `filter ${a.filter}` : "list";
+      return new Text(theme.fg("toolTitle", theme.bold("🐦 cached ")) + theme.fg("muted", what), 0, 0);
+    },
   });
 
   // magpi_search registers at session_start, when every extension has loaded:
@@ -593,7 +600,7 @@ export default function (pi: ExtensionAPI) {
       if (ctx.hasUI) {
         const pasted = await ctx.ui.input(
           [
-            "magpi: every search source failed, so the agent needs you to search for it.",
+            "🐦 magpi: every search source failed, so the agent needs you to search for it.",
             "",
             `Look up:  ${params.query}`,
             "",
@@ -646,7 +653,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.registerCommand("magpi", {
-    description: "MagPi: status | cache stats|clear|prune | scope global|project | ttl <hours> | max <MB> | reindex | handlers | help",
+    description: "🐦 magpi: status | cache stats|clear|prune | scope global|project | ttl <hours> | max <MB> | reindex | handlers | help",
     getArgumentCompletions: completeCommand,
     handler: async (args, ctx) => {
       const cfg = loadConfig(ctx.cwd, ctx.isProjectTrusted());
@@ -663,7 +670,7 @@ export default function (pi: ExtensionAPI) {
       switch (cmd || "status") {
         case "status": {
           notify([
-            `MagPi | write scope: ${cfg.cacheScope} | ttl: ${cfg.ttlHours}h | max: ${cfg.maxCacheMB > 0 ? `${cfg.maxCacheMB}MB` : "off"}`,
+            `🐦 magpi | write scope: ${cfg.cacheScope} | ttl: ${cfg.ttlHours}h | max: ${cfg.maxCacheMB > 0 ? `${cfg.maxCacheMB}MB` : "off"}`,
             ...roots.map(([tag, root]) => {
               const s = cache.stats(root);
               return `${root === writeRoot ? "▸" : " "}${tag} ${s.entries} entries (${formatSize(s.bytes)}) | ${root}`;
