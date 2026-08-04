@@ -586,11 +586,25 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      // All sources down/rate-limited: ask the human, unashamedly.
+      // All sources down/rate-limited: ask the human, unashamedly. The title is
+      // the only text pi's input dialog renders, so the whole briefing goes
+      // there; the placeholder is dropped in the TUI and shown over RPC.
       if (ctx.hasUI) {
         const pasted = await ctx.ui.input(
-          "MagPi search fallback",
-          `Automated search failed for "${params.query}" (${errors.join("; ")}). Paste search results or URLs (leave empty to skip):`,
+          [
+            "magpi: every search source failed, so the agent needs you to search for it.",
+            "",
+            `Look up:  ${params.query}`,
+            "",
+            // One line per paragraph: the dialog wraps to the terminal, and a
+            // pre-wrapped paragraph comes out ragged on a narrow one.
+            "Paste result URLs below, one per line. Titles and snippets are welcome but not required, because the agent fetches and reads the pages itself. A single good link is enough to unblock it.",
+            "",
+            "Submit empty to skip, and the agent carries on without search results.",
+            "",
+            `Sources tried: ${errors.join("; ")}`,
+          ].join("\n"),
+          "https://... one url per line",
         );
         if (pasted?.trim()) {
           return {
