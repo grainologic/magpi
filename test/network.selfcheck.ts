@@ -80,3 +80,39 @@ test("at least one search source returns results", { skip: !online }, async () =
   assert.ok(results.length > 0, `all sources failed: ${errors.join("; ")}`);
   assert.match(results[0].url, /^https?:\/\//);
 });
+
+// Each source has its own endpoint, its own shape, and its own way of breaking,
+// so one passing source says nothing about the other three. Individually they
+// are allowed to be rate-limited; collectively they are not, since a run where
+// every source is down would otherwise look the same as one where the parsers
+// all silently rotted.
+const SOURCES = ["ddg", "wikipedia", "hn", "context7"] as const;
+const reachable: string[] = [];
+
+for (const source of SOURCES) {
+  test(`${source} search returns usable results`, { skip: !online }, async (t) => {
+    const { results, errors } = await webSearch("rust async runtime", source);
+    if (results.length === 0) {
+      t.diagnostic(`${source} unavailable: ${errors.join("; ")}`);
+      return; // rate limits are the normal weather on free endpoints
+    }
+    reachable.push(source);
+    for (const r of results) {
+      assert.equal(r.source, source, "results are tagged with the source that produced them");
+      assert.match(r.url, /^https?:\/\//, `${source} returned an unfetchable url: ${r.url}`);
+      assert.ok(r.title.trim().length > 0, `${source} returned an untitled result`);
+      assert.doesNotMatch(r.title, /<[a-z/]/i, `${source} leaked markup into a title: ${r.title}`);
+    }
+    assert.ok(results.length <= 8, `${source} returned ${results.length}, over the per-source cap`);
+  });
+}
+
+test("the search sources are not all down at once", { skip: !online }, () => {
+  assert.ok(reachable.length > 0, "every search source failed; check the parsers before blaming rate limits");
+});
+
+test("an unknown source name is rejected rather than silently skipped", { skip: !online }, async () => {
+  const { results, errors } = await webSearch("anything", "nope" as never);
+  assert.equal(results.length, 0);
+  assert.equal(errors.length, 1, "the bad source is reported, not swallowed");
+});
