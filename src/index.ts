@@ -415,12 +415,13 @@ export default function (pi: ExtensionAPI) {
       };
     },
     // Display-only (never touches session content or LLM context): a calm
-    // one-liner collapsed, full preview on expand.
+    // one-liner collapsed, full preview on expand. The bird is the same mark
+    // the status line carries, so a magpi call is recognizable at a glance.
     renderCall(args, theme) {
       const a = (args ?? {}) as { url?: string; urls?: string[]; mode?: string; topic?: string };
       const target = a.url ?? (Array.isArray(a.urls) ? `${a.urls.length} urls` : "");
       return new Text(
-        theme.fg("toolTitle", theme.bold("magpi_fetch ")) +
+        theme.fg("toolTitle", theme.bold("🐦 fetch ")) +
           theme.fg("muted", `${target}${a.mode === "full" ? " (full)" : ""}${a.topic ? ` · ${a.topic}` : ""}`),
         0,
         0,
@@ -620,7 +621,7 @@ export default function (pi: ExtensionAPI) {
     renderCall(args, theme) {
       const a = (args ?? {}) as { query?: string; source?: string };
       return new Text(
-        theme.fg("toolTitle", theme.bold("magpi_search ")) +
+        theme.fg("toolTitle", theme.bold("🐦 search ")) +
           theme.fg("muted", `"${a.query ?? ""}"${a.source && a.source !== "auto" ? ` [${a.source}]` : ""}`),
         0,
         0,
