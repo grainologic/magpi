@@ -46,17 +46,28 @@ export default function (pi: ExtensionAPI) {
     ui: { setStatus(id: string, text: string): void };
   }
 
-  // Terse persistent footer: "magpi ▸G12 L3 · 40MB": entries per cache,
+  // Terse persistent footer: "🐦 magpi ▸G12 L3 · 40MB |": entries per cache,
   // ▸ marks the write scope, total size last. The cache is real disk; keep
-  // its weight visible. Refreshed only when storage actually changes.
+  // its weight visible. Refreshed only when storage actually changes. The bird
+  // and the trailing bar mark where magpi's segment starts and stops, since
+  // other extensions share the status line.
+  //
+  // Every extension competes for this one line, so an empty cache is not worth
+  // a character: a zero count drops its tag, and no entries at all drops the
+  // whole segment.
   function updateStatus(ctx: StatusCtx) {
     if (!ctx.hasUI) return;
     const cfg = loadConfig(ctx.cwd, ctx.isProjectTrusted());
     const g = cache.stats(globalCacheRoot());
     const l = cache.stats(projectCacheRoot(ctx.cwd));
     const sel = cfg.cacheScope === "project" ? "L" : "G";
-    const part = (tag: string, entries: number) => `${sel === tag ? "▸" : ""}${tag}${entries}`;
-    ctx.ui.setStatus("magpi", `magpi ${part("G", g.entries)} ${part("L", l.entries)} · ${formatSize(g.bytes + l.bytes)}`);
+    const part = (tag: string, entries: number) =>
+      entries > 0 ? `${sel === tag ? "▸" : ""}${tag}${entries}` : "";
+    const counts = [part("G", g.entries), part("L", l.entries)].filter(Boolean);
+    ctx.ui.setStatus(
+      "magpi",
+      counts.length ? `🐦 magpi ${counts.join(" ")} · ${formatSize(g.bytes + l.bytes)} |` : "",
+    );
   }
 
   const bothRoots = (cwd: string, cfg: ReturnType<typeof loadConfig>) => {
