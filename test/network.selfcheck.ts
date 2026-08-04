@@ -47,6 +47,15 @@ test("github handler returns readme with metadata header", { skip: !online }, as
   assert.match(r.content, /p-retry/);
 });
 
+test("arxiv handler answers a versioned pdf url", { skip: !online }, async () => {
+  // Whichever way it gets there: the export api, or the abstract page when
+  // export.arxiv.org is having one of its days.
+  const r = await fetchVia("https://arxiv.org/pdf/1706.03762v7.pdf");
+  assert.ok(r.kind === "paper" || r.kind === "article", `unexpected kind ${r.kind}`);
+  assert.match(r.content, /Attention Is All You Need/i);
+  assert.match(r.content, /transduction|Transformer/i, "the abstract came through");
+});
+
 test("default handler extracts a generic webpage", { skip: !online }, async () => {
   const r = await fetchVia("https://example.com/");
   assert.equal(r.kind, "article");

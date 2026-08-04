@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { paperId } from "../src/handlers/arxiv.js";
 import { assertPublicTarget, isPrivateIp, withDeadline } from "../src/handlers/handler.js";
 import { REGISTRIES } from "../src/handlers/registries/index.js";
 import { registerHandler, resolveHandler } from "../src/handlers/registry.js";
@@ -55,6 +56,21 @@ test("ssrf guard blocks private targets and bad schemes", async () => {
   await assert.rejects(assertPublicTarget(new URL("http://localhost:3000/")), /loopback/);
   await assert.rejects(assertPublicTarget(new URL("ftp://example.com/x")), /scheme/);
   await assert.doesNotReject(assertPublicTarget(new URL("https://8.8.8.8/")));
+});
+
+test("arxiv ids survive every url form", () => {
+  const cases: Array<[string, string]> = [
+    ["/abs/2301.00001", "2301.00001"],
+    ["/abs/2301.00001v2", "2301.00001"],
+    ["/pdf/2301.00001", "2301.00001"],
+    ["/pdf/2301.00001.pdf", "2301.00001"],
+    // Both suffixes at once: the export api answers this one with an empty feed.
+    ["/pdf/2301.00001v2.pdf", "2301.00001"],
+    ["/html/2401.12345v1", "2401.12345"],
+    ["/abs/math/0309136", "math/0309136"],
+    ["/pdf/hep-th/9901001v3", "hep-th/9901001"],
+  ];
+  for (const [pathname, id] of cases) assert.equal(paperId(pathname), id, pathname);
 });
 
 test("withDeadline gives up on work that ignores its signal", async () => {
