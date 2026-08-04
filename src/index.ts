@@ -13,6 +13,7 @@ import * as cache from "./cache.js";
 import * as cachedb from "./cachedb.js";
 import { share } from "./inflight.js";
 import { elideFetchPreviews } from "./prune.js";
+import { matchTopic } from "./topic.js";
 import {
   cacheRoot,
   globalCacheRoot,
@@ -324,10 +325,11 @@ export default function (pi: ExtensionAPI) {
     name: "magpi_fetch",
     label: "Web Fetch",
     description:
-      "Fetch URLs with smart extraction and a persistent disk cache. Specialized handling for GitHub/GitLab (README or full clone; issues/PRs), package registries (npm, PyPI, crates.io, Go, RubyGems, Packagist, Hex, Maven: metadata or full package download), Wikipedia/Wikidata, Stack Overflow/Stack Exchange (Q + top answers), Reddit threads, arXiv papers, and generic webpages (readable markdown). Single url returns a preview plus the cached file path; read/grep that path for the rest instead of refetching. Pass urls (array) to batch-fetch up to 5 in parallel (paths only). Falls back to a stale cached copy if the network is down.",
+      "Fetch URLs with smart extraction and a persistent disk cache. Specialized handling for GitHub/GitLab (README or full clone; issues/PRs), package registries (npm, PyPI, crates.io, Go, RubyGems, Packagist, Hex, Maven: metadata or full package download), Wikipedia/Wikidata, Stack Overflow/Stack Exchange (Q + top answers), Reddit threads, arXiv papers, and generic webpages (readable markdown). Single url returns a preview plus the cached file path; read/grep that path for the rest instead of refetching. Pass topic to get the sections of the page that answer your question rather than its opening lines. Pass urls (array) to batch-fetch up to 5 in parallel (paths only). Falls back to a stale cached copy if the network is down.",
     promptSnippet: "Fetch any URL (webpage, repo, package, wiki) with smart extraction and disk caching",
     promptGuidelines: [
       "Use magpi_fetch whenever the user shares a URL or web content is needed; it caches to disk; read/grep the returned cache path for more detail instead of calling magpi_fetch again.",
+      "Whenever you are fetching a page to answer a specific question, pass topic with a few words describing what you need, taken from the question itself. Without it the preview is the top of the page, which on documentation is the table of contents. The user never has to supply keywords for this.",
       "Use magpi_fetch with mode 'full' only when you need actual source files (clones a repo or downloads a package into the cache).",
     ],
     parameters: Type.Object({
@@ -338,6 +340,12 @@ export default function (pi: ExtensionAPI) {
       mode: Type.Optional(
         StringEnum(["light", "full"] as const, {
           description: "light (default): readme/extract/metadata. full: clone repo or download+extract package.",
+        }),
+      ),
+      topic: Type.Optional(
+        Type.String({
+          description:
+            "What you need from the page, in a few words (e.g. 'cancel a task group'). Returns the matching sections instead of the top of the document. Derive it from the question you are answering; never ask the user for keywords. Falls back to the top of the document when nothing matches.",
         }),
       ),
       refresh: Type.Optional(Type.Boolean({ description: "Bypass the cache and refetch" })),
@@ -361,8 +369,13 @@ export default function (pi: ExtensionAPI) {
 
       const { entry, fromCache, stale } = await fetchToCache(targets[0], mode, params.refresh, ctx, signal, onUpdate);
       const content = readFileSync(entry.contentPath, "utf8");
-      const t = truncateHead(content, { maxLines: PREVIEW_LINES, maxBytes: PREVIEW_BYTES });
-      accounting.recordWithheld(content.length - t.content.length);
+      // With a topic, return the sections that answer it; without one, the head
+      // of the document. A topic that matches nothing falls back to the head, so
+      // a bad guess is never worse than no guess.
+      const topical = params.topic ? matchTopic(content, params.topic, PREVIEW_BYTES) : undefined;
+      const head = topical ? undefined : truncateHead(content, { maxLines: PREVIEW_LINES, maxBytes: PREVIEW_BYTES });
+      const preview = topical?.content ?? head!.content;
+      accounting.recordWithheld(content.length - preview.length);
 
       const footer = [
         "",
@@ -371,15 +384,16 @@ export default function (pi: ExtensionAPI) {
           (fromCache
             ? ` | cached ${entry.ageHours < 1 ? `${Math.round(entry.ageHours * 60)}m` : `${entry.ageHours.toFixed(1)}h`} ago (${entry.meta.fetchedAt})${stale ? " | STALE: network unavailable, serving old copy" : ""}`
             : ` | fetched ${entry.meta.fetchedAt}`),
+        topical ? `sections matching "${params.topic}": ${topical.headings.join(" | ")}` : "",
         `full text: ${entry.contentPath} (${formatSize(entry.meta.contentBytes)})` +
-          (t.truncated ? " (preview truncated; read the file for the rest)" : ""),
+          (topical || head!.truncated ? " (partial view above; read the file for the rest)" : ""),
         entry.treePath ? `files: ${entry.treePath} (use ls/read/grep there)` : "",
       ]
         .filter(Boolean)
         .join("\n");
 
       return {
-        content: [{ type: "text", text: t.content + footer }],
+        content: [{ type: "text", text: preview + footer }],
         details: {
           url: entry.meta.url,
           mode,
@@ -387,6 +401,8 @@ export default function (pi: ExtensionAPI) {
           kind: entry.meta.kind,
           title: entry.meta.title,
           fetchedAt: entry.meta.fetchedAt,
+          topic: params.topic,
+          sections: topical?.headings,
           fromCache,
           stale,
           contentBytes: entry.meta.contentBytes,
@@ -398,11 +414,11 @@ export default function (pi: ExtensionAPI) {
     // Display-only (never touches session content or LLM context): a calm
     // one-liner collapsed, full preview on expand.
     renderCall(args, theme) {
-      const a = (args ?? {}) as { url?: string; urls?: string[]; mode?: string };
+      const a = (args ?? {}) as { url?: string; urls?: string[]; mode?: string; topic?: string };
       const target = a.url ?? (Array.isArray(a.urls) ? `${a.urls.length} urls` : "");
       return new Text(
         theme.fg("toolTitle", theme.bold("magpi_fetch ")) +
-          theme.fg("muted", `${target}${a.mode === "full" ? " (full)" : ""}`),
+          theme.fg("muted", `${target}${a.mode === "full" ? " (full)" : ""}${a.topic ? ` · ${a.topic}` : ""}`),
         0,
         0,
       );
