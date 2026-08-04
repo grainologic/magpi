@@ -485,10 +485,10 @@ export default function (pi: ExtensionAPI) {
         (deferring
           ? `FALLBACK web search. Prefer ${rivals} for searches; use magpi_search only when ${rivals} is unavailable, failing, or rate-limited. `
           : "") +
-        "Best-effort web search with no API keys: DuckDuckGo Lite, Wikipedia, and HN Algolia (all rate-limited free endpoints). Returns titles, URLs and snippets; follow up with magpi_fetch on promising URLs. If every source fails, ask the user to run the search and paste results.",
+        "Best-effort web search with no API keys: DuckDuckGo Lite, Wikipedia, HN Algolia, and Context7 (all rate-limited free endpoints). Returns titles, URLs and snippets; follow up with magpi_fetch on promising URLs. Set source to 'context7' to search library and framework documentation by name, which beats a general web search for API questions. If every source fails, ask the user to run the search and paste results.",
       promptSnippet: deferring
         ? `Fallback web search (prefer ${rivals}), no API keys`
-        : "Best-effort web search (DDG Lite, Wikipedia, HN), no API keys",
+        : "Best-effort web search (DDG Lite, Wikipedia, HN, Context7 docs), no API keys",
       promptGuidelines: [
         deferring
           ? `Prefer ${rivals} for web searches; use magpi_search only if ${rivals} fails or is unavailable. Either way, magpi_fetch the promising URLs. If all search fails, ask the user to search and paste results; do not silently fall back to memory.`
@@ -497,8 +497,9 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       query: Type.String({ description: "Search query" }),
       source: Type.Optional(
-        StringEnum(["auto", "ddg", "wikipedia", "hn"] as const, {
-          description: "auto (default) tries ddg, then wikipedia, then hn",
+        StringEnum(["auto", "ddg", "wikipedia", "hn", "context7"] as const, {
+          description:
+            "auto (default) tries ddg, then wikipedia, then hn, then context7. context7 searches library documentation by name; pick it directly for API and framework questions.",
         }),
       ),
       fetch_top: Type.Optional(

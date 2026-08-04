@@ -9,7 +9,7 @@ export interface SearchResult {
   source: string;
 }
 
-export type SearchSource = "ddg" | "wikipedia" | "hn";
+export type SearchSource = "ddg" | "wikipedia" | "hn" | "context7";
 
 /** Exported separately so the parser is testable offline. */
 export function parseDdgLite(html: string): SearchResult[] {
@@ -72,10 +72,45 @@ async function searchHn(query: string, signal?: AbortSignal): Promise<SearchResu
     }));
 }
 
+/** Exported separately so the mapping is testable offline. */
+export function parseContext7(payload: unknown): SearchResult[] {
+  const rows = (payload as { results?: unknown[] })?.results ?? [];
+  const out: SearchResult[] = [];
+  for (const row of rows as Array<Record<string, any>>) {
+    // An id is the doc path; without snippets there is nothing to fetch.
+    if (typeof row?.id !== "string" || !(row.totalSnippets > 0)) continue;
+    out.push({
+      title: String(row.title ?? row.id),
+      // The plaintext API, not the human page: the site itself renders through
+      // javascript, while this returns docs the default handler stores as-is.
+      url: `https://context7.com/api/v1${row.id}?type=txt`,
+      snippet: [row.description, `${row.totalSnippets} snippets`, row.trustScore ? `trust ${row.trustScore}` : ""]
+        .filter(Boolean)
+        .join(" | "),
+      source: "context7",
+    });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/**
+ * Library documentation by name. Context7 indexes versioned docs for thousands
+ * of libraries and answers without an API key, which keeps magpi's no-key rule
+ * intact. Narrower than the others, so the model should ask for it by name when
+ * it wants API docs rather than pages about a library.
+ */
+async function searchContext7(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
+  return parseContext7(
+    await getJson<unknown>(`https://context7.com/api/v1/search?query=${encodeURIComponent(query)}`, signal),
+  );
+}
+
 const SOURCES: Record<SearchSource, (q: string, s?: AbortSignal) => Promise<SearchResult[]>> = {
   ddg: searchDdg,
   wikipedia: searchWikipedia,
   hn: searchHn,
+  context7: searchContext7,
 };
 
 export interface SearchOutcome {
@@ -84,9 +119,14 @@ export interface SearchOutcome {
 }
 
 /**
- * auto: ddg first (broadest), then wikipedia, then hn; stop at the first
- * source that returns anything. All are rate-limited free endpoints; failures
- * are expected and reported, not fatal.
+ * auto: ddg first (broadest), then wikipedia, then hn, then context7; stop at
+ * the first source that returns anything. All are rate-limited free endpoints;
+ * failures are expected and reported, not fatal.
+ *
+ * context7 sits last because it only knows libraries, so on a general query it
+ * would answer confidently and wrongly. It earns the last slot by being the
+ * steadiest of the four: when the other three are down it still replies. Ask
+ * for it by name to search library docs directly.
  */
 export async function webSearch(
   query: string,
@@ -94,7 +134,7 @@ export async function webSearch(
   signal?: AbortSignal,
   onSource?: (source: SearchSource) => void,
 ): Promise<SearchOutcome> {
-  const order: SearchSource[] = source === "auto" ? ["ddg", "wikipedia", "hn"] : [source];
+  const order: SearchSource[] = source === "auto" ? ["ddg", "wikipedia", "hn", "context7"] : [source];
   const errors: string[] = [];
   for (const s of order) {
     onSource?.(s);
