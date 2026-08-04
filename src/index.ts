@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import * as accounting from "./accounting.js";
 import * as cache from "./cache.js";
 import * as cachedb from "./cachedb.js";
+import { share } from "./inflight.js";
 import { elideFetchPreviews } from "./prune.js";
 import {
   cacheRoot,
@@ -129,7 +130,16 @@ export default function (pi: ExtensionAPI) {
     registerHandler(handler as never);
   });
 
-  async function fetchToCache(
+  /** Concurrent callers asking for one URL and mode share a single fetch. */
+  async function fetchToCache(...args: Parameters<typeof fetchOnce>) {
+    const [rawUrl, mode, refresh] = args;
+    // Refresh keys separately, so a refresh never joins a call that is allowed
+    // to answer from cache.
+    const key = `${mode}:${refresh ? "refresh:" : ""}${cache.canonicalize(normalizeUrl(rawUrl))}`;
+    return share(key, () => fetchOnce(...args));
+  }
+
+  async function fetchOnce(
     rawUrl: string,
     mode: FetchMode,
     refresh: boolean | undefined,
@@ -235,7 +245,8 @@ export default function (pi: ExtensionAPI) {
       refresh: Type.Optional(Type.Boolean({ description: "Bypass the cache and refetch" })),
     }),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      const targets = [...(params.url ? [params.url] : []), ...(params.urls ?? [])].slice(0, 5);
+      // Dedupe before slicing: a repeated url should not spend one of the five.
+      const targets = [...new Set([...(params.url ? [params.url] : []), ...(params.urls ?? [])])].slice(0, 5);
       if (targets.length === 0) throw new Error("Provide url or urls");
       const mode: FetchMode = params.mode ?? "light";
 
