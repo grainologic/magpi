@@ -253,6 +253,8 @@ export async function cloneRepo(cloneUrl: string, ctx: FetchContext): Promise<Ha
 }
 
 async function pdfToText(buf: ArrayBuffer): Promise<string> {
+  // unpdf 1.8's bundled PDF.js calls this ES2026 API despite declaring Node >=22.
+  (Math as any).sumPrecise ??= (values: Iterable<number>) => Array.from(values).reduce((sum, n) => sum + n, 0);
   const { extractText, getDocumentProxy } = await import("unpdf");
   const { text, totalPages } = await extractText(await getDocumentProxy(new Uint8Array(buf)), { mergePages: true });
   return `${text.trim()}\n\n(${totalPages} pages)`;

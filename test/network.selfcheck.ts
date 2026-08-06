@@ -56,10 +56,20 @@ test("github handler returns readme with metadata header", { skip: !online }, as
 test("arxiv handler answers a versioned pdf url", { skip: !online }, async () => {
   // Whichever way it gets there: the export api, or the abstract page when
   // export.arxiv.org is having one of its days.
-  const r = await fetchVia("https://arxiv.org/pdf/1706.03762v7.pdf");
+  const r = await fetchVia("https://arxiv.org/abs/1706.03762");
   assert.ok(r.kind === "paper" || r.kind === "article", `unexpected kind ${r.kind}`);
   assert.match(r.content, /Attention Is All You Need/i);
   assert.match(r.content, /transduction|Transformer/i, "the abstract came through");
+});
+
+test("a /pdf/ url yields the paper, not its abstract", { skip: !online }, async () => {
+  // The whole point of asking for the pdf. Metadata-only is a few hundred
+  // bytes and stops at the abstract, so both assertions below fail if the
+  // handler ever silently falls back to the abstract page again.
+  const r = await fetchVia("https://arxiv.org/pdf/1706.03762v7.pdf");
+  assert.equal(r.kind, "paper");
+  assert.ok(r.content.length > 20_000, `got ${r.content.length} bytes, not a full paper`);
+  assert.match(r.content, /References|Bibliography/i, "full text runs past the abstract");
 });
 
 test("default handler extracts a generic webpage", { skip: !online }, async () => {

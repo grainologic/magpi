@@ -7,10 +7,12 @@ import { type FetchContext, type HandlerResult, FetchError, defaultFetch, define
  * ("math/0309136").
  */
 export function paperId(pathname: string): string {
-  return pathname
-    .replace(/^\/(abs|pdf|html)\//, "")
-    .replace(/\.pdf$/, "")
-    .replace(/v\d+$/, "");
+  return paperPdfId(pathname).replace(/v\d+$/, "");
+}
+
+/** PDF endpoints are versioned; unlike the metadata API, keep an explicit vN. */
+export function paperPdfId(pathname: string): string {
+  return pathname.replace(/^\/(abs|pdf|html)\//, "").replace(/\.pdf$/, "");
 }
 
 async function fromExportApi(id: string, ctx: FetchContext): Promise<HandlerResult> {
@@ -34,10 +36,19 @@ async function fromExportApi(id: string, ctx: FetchContext): Promise<HandlerResu
 
 export const arxivHandler = defineHandler({
   name: "arxiv",
-  description: "arXiv papers: title, authors, abstract via the export API, abstract page as fallback",
+  description: "arXiv papers: title, authors, abstract via the export API; full text for /pdf/ urls and full mode",
   match: (url) => /(^|\.)arxiv\.org$/.test(url.hostname) && /^\/(abs|pdf|html)\//.test(url.pathname),
   async fetch(url, ctx) {
     const id = paperId(url.pathname);
+
+    // Asking for /pdf/ (or full mode) means the caller wants the paper, not a
+    // summary of it. Metadata is a page of text; the paper is the reason the
+    // url was passed at all. defaultFetch sees application/pdf and extracts.
+    if (ctx.mode === "full" || /^\/pdf\//.test(url.pathname)) {
+      const paper = await defaultFetch(new URL(`https://arxiv.org/pdf/${paperPdfId(url.pathname)}`), { ...ctx, mode: "light" });
+      return { ...paper, kind: "paper" };
+    }
+
     try {
       return await fromExportApi(id, ctx);
     } catch {

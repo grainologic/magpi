@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { paperId } from "../src/handlers/arxiv.js";
+import { paperId, paperPdfId } from "../src/handlers/arxiv.js";
 import { assertPublicTarget, isPrivateIp, withDeadline } from "../src/handlers/handler.js";
 import { REGISTRIES } from "../src/handlers/registries/index.js";
 import { registerHandler, resolveHandler } from "../src/handlers/registry.js";
@@ -75,6 +75,7 @@ test("arxiv ids survive every url form", () => {
     ["/pdf/hep-th/9901001v3", "hep-th/9901001"],
   ];
   for (const [pathname, id] of cases) assert.equal(paperId(pathname), id, pathname);
+  assert.equal(paperPdfId("/pdf/2301.00001v2.pdf"), "2301.00001v2");
 });
 
 test("withDeadline gives up on work that ignores its signal", async () => {
