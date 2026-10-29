@@ -133,6 +133,21 @@ test("in a mixed doc the prose section beats the matching nav bullet", () => {
   assert.ok(!m!.content.includes("](#install)"), "the nav bullet stays out");
 });
 
+test("navigation cannot displace an answer whose heading uses different words", () => {
+  const doc = [
+    "# Widget guide",
+    "- [Install](#getting-started)",
+    "- [Configure](#configure)",
+    "- [Troubleshoot](#troubleshoot)",
+    "",
+    "## Getting started",
+    "Install the widget. Run npm install widget to install it. This installs the widget.",
+  ].join("\n");
+  const m = matchTopic(doc, "install", 8192)!;
+  assert.equal(m.headings[0], "Getting started");
+  assert.match(m.content, /Run npm install widget/);
+});
+
 /** Entries that span multiple lines: a wrapped description, nested sub-bullets, and a fenced block of dashes that must never count as an entry. */
 const STRUCTURED = [
   "# Index",
@@ -156,6 +171,24 @@ test("multiline entries and nested bullets keep their structure in line mode", (
   const feat = matchTopic(STRUCTURED, "feature", 4000)!;
   assert.ok(feat!.content.includes("2.0: new feature\n  - sub-item one"), "the sub-bullet stays with its parent");
   assert.ok(!feat!.content.includes("-- old line"), "fenced code never counts as an entry");
+});
+
+test("a selected list entry retains its fenced commands", () => {
+  for (const fence of ["```", "````", "~~~~"]) {
+    const entry = [
+      "- Install the widget:",
+      `  ${fence}sh`,
+      "  npm add widget",
+      "",
+      "  - this is code, not another entry",
+      ...(fence.length > 3 ? ["  ```", "  ~~~"] : []),
+      "  echo done",
+      `  ${fence}`,
+    ].join("\n");
+    const doc = ["# Index", entry, "- Configure the widget", "- Troubleshoot the widget"].join("\n");
+    const m = matchTopic(doc, "install", 8192)!;
+    assert.equal(m.content, entry, "code fences, blank lines and commands stay with the entry");
+  }
 });
 
 test("a section-shaped document with a few list lines keeps using section mode", () => {

@@ -483,9 +483,10 @@ export default function (pi: ExtensionAPI) {
         .filter(Boolean)
         .join("\n");
 
+      const previewDetails = { ...details, topic: params.topic, sections: topical?.headings };
       return {
         content: [{ type: "text", text: preview + footer }],
-        details: { ...details, topic: params.topic, sections: topical?.headings } satisfies FetchDetails,
+        details: previewDetails satisfies FetchDetails,
       };
     },
     // Display-only (never touches session content or LLM context): a calm one-liner collapsed, full preview on expand.
