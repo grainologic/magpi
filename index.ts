@@ -90,7 +90,7 @@ const HELP = [
   "Config (global first, then a trusted project override)",
   "  global   ~/.pi/agent/magpi.json",
   "  project  <project>/.pi/magpi.json",
-  "  keys     cacheScope, ttlHours, maxCacheMB, allowPrivateNetwork, preferredWebSearchTool",
+  "  keys     cacheScope, ttlHours, maxCacheMB, allowPrivateNetwork, preferredWebSearchTool, searchFallback",
 ];
 
 /** Cache age in the shortest unit that stays accurate: minutes under an hour, hours after. */
@@ -117,6 +117,57 @@ const toItems = (rows: Completion[], prefix = "") =>
     const value = prefix ? `${prefix} ${r.value}` : r.value;
     return { value, label: value, description: r.description };
   });
+
+/**
+ * What magpi_search does when every source failed: "skip" reports the failure as a normal tool result and carries on unattended; "ask" prompts the user to paste results, and throws when there is no UI or the paste is empty.
+ * The guidance keeps the two concerns apart: what the model owes (no silent memory fallback, plain admission when there is no evidence) vs. what magpi does to the user (prompt or not).
+ * The dialog title is the only text pi's input dialog renders, so the whole briefing goes there; the placeholder is dropped in the TUI and shown over RPC.
+ * Exported for the selfcheck.
+ */
+export async function searchFailure(
+  query: string,
+  errors: string[],
+  fallback: "ask" | "skip",
+  ctx: { hasUI: boolean; ui: { input(lines: string, placeholder?: string): Promise<string | undefined> } },
+) {
+  if (fallback === "skip") {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `All search sources failed for "${query}" (${errors.join("; ")}). Do not silently fall back to memory: search the local library with magpi_cached, fetch a URL you already know, or narrow the query. If those turn up no evidence, say so plainly and carry on - do not ask the user to search.`,
+        },
+      ],
+      details: { query, results: [], failed: true, errors },
+    };
+  }
+  if (ctx.hasUI) {
+    const pasted = await ctx.ui.input(
+      [
+        "🐦 magpi: every search source failed, so the agent needs you to search for it.",
+        "",
+        `Look up:  ${query}`,
+        "",
+        // One line per paragraph: the dialog wraps to the terminal, and a pre-wrapped paragraph comes out ragged on a narrow one.
+        "Paste result URLs below, one per line. Titles and snippets are welcome but not required, because the agent fetches and reads the pages itself. A single good link is enough to unblock it.",
+        "",
+        "Submit empty to skip, and the agent carries on without search results.",
+        "",
+        `Sources tried: ${errors.join("; ")}`,
+      ].join("\n"),
+      "https://... one url per line",
+    );
+    if (pasted?.trim()) {
+      return {
+        content: [{ type: "text", text: `User-provided search results:\n${pasted.trim()}` }],
+        details: { query, userProvided: true },
+      };
+    }
+  }
+  throw new Error(
+    `All search sources failed (${errors.join("; ")}). Ask the user to search the web for "${query}" and share results or URLs.`,
+  );
+}
 
 /**
  * Complete a /magpi argument.
@@ -242,6 +293,15 @@ export default function (pi: ExtensionAPI) {
   unsubs.push(pi.on("before_agent_start", (event, ctx) => {
     const cfg = loadConfig(ctx.cwd, ctx.isProjectTrusted());
     preferredWebSearchTool = cfg.preferredWebSearchTool;
+
+    // Failure guidance follows searchFallback, and keeps the two concerns apart:
+    // what magpi does to the user (ask or not) vs. what the model owes (no silent memory fallback).
+    // The static guideline cannot carry the config-dependent choice, so it is diffed in per turn.
+    event.systemPromptOptions.toolGuidelines["magpi_search"] = [
+      cfg.searchFallback === "skip"
+        ? "If magpi_search reports every source failed, do not silently fall back to memory: search the local library with magpi_cached, fetch a URL you already know, or narrow the query. If those turn up no evidence, say so plainly and carry on - the session is unattended, so do not ask the user to search."
+        : "If all search fails, ask the user to search and paste results and disclose what could not be verified; do not silently fall back to memory.",
+    ];
 
     if (event.messageType !== "user") return;
     const urls = [...new Set(event.prompt.match(/https?:\/\/[^\s)\]}>"']+/g) ?? [])].slice(0, 8);
@@ -608,10 +668,10 @@ export default function (pi: ExtensionAPI) {
     name: "magpi_search",
     label: "Web Search",
     description:
-      "Search DuckDuckGo Lite, Wikipedia, HN Algolia, or Context7. Returns titles, URLs, and snippets; fetch result URLs for content. Use source='context7' with a library name for documentation. If no results are returned, ask the user to search and paste results.",
+      "Search DuckDuckGo Lite, Wikipedia, HN Algolia, or Context7. Returns titles, URLs, and snippets; fetch result URLs for content. Use source='context7' with a library name for documentation. When no source returns results, behavior follows the searchFallback setting in magpi.json: 'ask' (default) prompts the user to paste results; 'skip' reports the failure so the session carries on unattended.",
     promptSnippet: "Best-effort web search (DDG Lite, Wikipedia, HN, Context7 docs), no API keys",
     promptGuidelines: [
-      "Use magpi_search as a fallback for web discovery instead of saying you cannot search; then magpi_fetch the promising URLs. If magpi_search fails or returns nothing useful, ask the user to search and paste results and disclose what could not be verified; do not silently fall back to memory.",
+      "Use magpi_search as a fallback for web discovery instead of saying you cannot search; then magpi_fetch the promising URLs. If magpi_search fails or returns nothing useful, do not silently fall back to memory and follow the guidance in its failure message.",
     ],
     prepareLoadout(loadout) {
       if (!preferredWebSearchTool) return undefined;
@@ -661,34 +721,8 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      // All sources down/rate-limited: ask the human, unashamedly.
-      // The title is the only text pi's input dialog renders, so the whole briefing goes there; the placeholder is dropped in the TUI and shown over RPC.
-      if (ctx.hasUI) {
-        const pasted = await ctx.ui.input(
-          [
-            "🐦 magpi: every search source failed, so the agent needs you to search for it.",
-            "",
-            `Look up:  ${params.query}`,
-            "",
-            // One line per paragraph: the dialog wraps to the terminal, and a pre-wrapped paragraph comes out ragged on a narrow one.
-            "Paste result URLs below, one per line. Titles and snippets are welcome but not required, because the agent fetches and reads the pages itself. A single good link is enough to unblock it.",
-            "",
-            "Submit empty to skip, and the agent carries on without search results.",
-            "",
-            `Sources tried: ${errors.join("; ")}`,
-          ].join("\n"),
-          "https://... one url per line",
-        );
-        if (pasted?.trim()) {
-          return {
-            content: [{ type: "text", text: `User-provided search results:\n${pasted.trim()}` }],
-            details: { query: params.query, userProvided: true },
-          };
-        }
-      }
-      throw new Error(
-        `All search sources failed (${errors.join("; ")}). Ask the user to search the web for "${params.query}" and share results or URLs.`,
-      );
+      // All sources down/rate-limited: the searchFallback setting decides whether to ask the human (unashamedly) or carry on unattended.
+      return await searchFailure(params.query, errors, loadConfig(ctx.cwd, ctx.isProjectTrusted()).searchFallback, ctx);
     },
     renderCall(args, theme) {
       const a = (args ?? {}) as { query?: string; source?: string };
@@ -704,7 +738,10 @@ export default function (pi: ExtensionAPI) {
         const msg = (result?.content?.[0] as { text?: string } | undefined)?.text ?? "searching...";
         return new Text(theme.fg("warning", msg), 0, 0);
       }
-      const d = (result.details ?? {}) as { results?: Array<{ source: string }> };
+      const d = (result.details ?? {}) as { results?: Array<{ source: string }>; failed?: boolean; errors?: string[] };
+      if (d.failed) {
+        return new Text(theme.fg("error", "✗ ") + theme.fg("muted", `all sources failed${d.errors?.length ? ` [${d.errors.join("; ")}]` : ""}`), 0, 0);
+      }
       const n = d.results?.length ?? 0;
       const sources = [...new Set((d.results ?? []).map((r) => r.source))].join(",");
       let line = theme.fg("success", "✓ ") + theme.fg("muted", `${n} results${sources ? ` [${sources}]` : ""}`);
@@ -734,7 +771,7 @@ export default function (pi: ExtensionAPI) {
       switch (cmd || "status") {
         case "status": {
           notify([
-            `🐦 magpi | write scope: ${cfg.cacheScope} | ttl: ${cfg.ttlHours}h | max: ${cfg.maxCacheMB > 0 ? `${cfg.maxCacheMB}MB` : "off"}`,
+            `🐦 magpi | write scope: ${cfg.cacheScope} | search fallback: ${cfg.searchFallback} | ttl: ${cfg.ttlHours}h | max: ${cfg.maxCacheMB > 0 ? `${cfg.maxCacheMB}MB` : "off"}`,
             ...roots.map(([tag, root]) => {
               const s = cache.stats(root);
               return `${root === writeRoot ? "▸" : " "}${tag} ${s.entries} entries (${formatSize(s.bytes)}) | ${root}`;

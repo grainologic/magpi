@@ -20,6 +20,8 @@ export interface MagpiConfig {
   allowPrivateNetwork: boolean;
   /** Exact Pi tool name to prefer over magpi_search; null disables automatic demotion. */
   preferredWebSearchTool: string | null;
+  /** What magpi_search does when every source fails: "ask" prompts the user to paste results; "skip" reports the failure and the session carries on. */
+  searchFallback: "ask" | "skip";
 }
 
 export const DEFAULTS: MagpiConfig = {
@@ -28,6 +30,7 @@ export const DEFAULTS: MagpiConfig = {
   maxCacheMB: 0,
   allowPrivateNetwork: false,
   preferredWebSearchTool: null,
+  searchFallback: "ask",
 };
 
 export const globalConfigPath = () => join(homedir(), CONFIG_DIR, "agent", "magpi.json");
@@ -56,6 +59,7 @@ export function loadConfig(cwd: string, projectTrusted: boolean): MagpiConfig {
   return {
     ...merged,
     preferredWebSearchTool: normalizePreferredWebSearchTool(merged.preferredWebSearchTool),
+    searchFallback: merged.searchFallback === "skip" ? "skip" : "ask",
   };
 }
 

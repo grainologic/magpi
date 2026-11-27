@@ -21,6 +21,7 @@ Default to global unless the user asks for a project-local setting.
 | `ttlHours` | `number` | `24` | Freshness window in hours before refetch. |
 | `maxCacheMB` | `number` | `0` | LRU eviction budget in MB for the write-scope cache (`0` = unlimited). |
 | `allowPrivateNetwork` | `boolean` | `false` | Permit loopback and private-network fetches. |
+| `searchFallback` | `"ask" \| "skip"` | `"ask"` | What `magpi_search` does when every source fails: prompt for pasted results, or report the failure and carry on unattended. |
 
 ## Steps
 
